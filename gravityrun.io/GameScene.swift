@@ -17,17 +17,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     
     
-    override func didMove(to view: SKView) {
-        // set fps to 60 or 120 fps depends on device
-        if UIScreen.main.maximumFramesPerSecond == 60 {
-            self.view?.preferredFramesPerSecond = 60
-        } else if UIScreen.main.maximumFramesPerSecond == 120 {
-            self.view?.preferredFramesPerSecond = 120
+    override func didMove(to scene: SKView) {
+        displaySettings()
+        physicsSettings()
+        addCube()
+        addCeiling()
+        addGround()
+        addCamera()
+    }
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // switch the gravity
+        physicsWorld.gravity.dy *= -1
+    }
+    
+    override func update(_ currentTime: TimeInterval) {
+        // moving to right
+        if moveRight {
+            cube.position.x += 2
         }
-
-        // build the scene
-        backgroundColor = .cyan
         
+        addTrailCubes()
+        moveCamera()
+        removeObstacles()
+    }
+    
+    private func addCube() {
         // draw the player texture
         cube.position = CGPoint(x: frame.midX, y: frame.midY)
         cube.fillColor = UIColor.white
@@ -40,68 +55,55 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         cube.physicsBody?.isDynamic = true
         cube.physicsBody?.allowsRotation = false // prevent cube from rotating
         
-        // set up physics world
-        physicsWorld.gravity = CGVector(dx: 0, dy: -9.8)
-        physicsWorld.contactDelegate = self
-        
-        // ground
-        let groundSprite = SKSpriteNode(color: .gray, size: CGSize(width: size.width, height: 30))
-        ground.position = CGPoint(x: frame.midX, y: -250)
-        ground.addChild(groundSprite)
-        ground.physicsBody = SKPhysicsBody(rectangleOf: groundSprite.size)
-        ground.physicsBody?.isDynamic = false
-        addChild(ground)
-        
-        // ceiling
-        let ceilingSprite = SKSpriteNode(color: .gray, size: CGSize(width: size.width, height: 30))
-        ceiling.position = CGPoint(x: frame.midX, y: 250)
-        ceiling.addChild(ceilingSprite)
-        ceiling.physicsBody = SKPhysicsBody(rectangleOf: ceilingSprite.size)
-        ceiling.physicsBody?.isDynamic = false
-        addChild(ceiling)
-        
-    
-        /*// leftButton for moving left
-         leftButton.fillColor = .gray
-         addChild(leftButton)
-         
-         // rightButton for moving right
-         rightButton.fillColor = .gray
-         addChild(rightButton)
-         
-         // gravityButton for switching gravity
-         gravityButton.fillColor = .red
-         addChild(gravityButton)*/
-        
         // move cube automatically to right
         let moveRight2 = SKAction.moveBy(x: 4, y: 0, duration: 0.01)
         let moveForever = SKAction.repeatForever(moveRight2)
         cube.run(moveForever)
         isMoving = true
-        
+    }
+    
+    private func addCeiling() {
+        // add ceiling node
+        let ceilingSprite = SKSpriteNode(color: .gray, size: CGSize(width: 1000, height: 30))
+        ceiling.position = CGPoint(x: frame.midX, y: 250)
+        ceiling.addChild(ceilingSprite)
+        ceiling.physicsBody = SKPhysicsBody(rectangleOf: ceilingSprite.size)
+        ceiling.physicsBody?.isDynamic = false
+        addChild(ceiling)
+    }
+    
+    private func addGround() {
+        // add ground node
+        let groundSprite = SKSpriteNode(color: .gray, size: CGSize(width: 1000, height: 30))
+        ground.position = CGPoint(x: frame.midX, y: -250)
+        groundSprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        ground.addChild(groundSprite)
+        ground.physicsBody = SKPhysicsBody(rectangleOf: groundSprite.size)
+        ground.physicsBody?.isDynamic = false
+        addChild(ground)
+    }
+    
+    private func addCamera() {
         // camera node
         addChild(cameraNode)
         camera = cameraNode
+        cameraNode.setScale(1.5)
+    }
+    
+    private func moveCamera() {
+        // move camera to follow the cube
+        let cameraPositionInScene = cameraNode.parent?.convert(cube.position, from: self) ?? cube.position
+        cameraNode.position.x = cameraPositionInScene.x
+        ground.position.x = cameraNode.position.x
+        ceiling.position.x = cameraNode.position.x
         
-    }
-    
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        physicsWorld.gravity.dy *= -1
-    }
-    
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        moveLeft = false
-        moveRight = false
-    }
-    
-    override func update(_ currentTime: TimeInterval) {
-        // moving
-        if moveLeft {
-            cube.position.x -= 2
-        } else if moveRight {
-            cube.position.x += 2
+        if obstacles.count < 5 {
+            addObstacle()
         }
-        
+    }
+    
+    private func addTrailCubes() {
+        // adds 20 trail cubes
         if isMoving {
             if trailCubes.count >= maxTrailCubes {
                 let oldestTrailCube = trailCubes.removeFirst()
@@ -117,27 +119,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             addChild(trailCube)
             trailCubes.append(trailCube)
         }
-        
-        
-        // move camera to follow the cube
-        let cameraPositionInScene = cameraNode.parent?.convert(cube.position, from: self) ?? cube.position
-        cameraNode.position.x = cameraPositionInScene.x
-        ground.position.x = cameraNode.position.x
-        ceiling.position.x = cameraNode.position.x
-        
-        if obstacles.count < 5 {
-            addObstacle()
-        }
-        
-        // remove obstacles
-        removeObstacles()
     }
     
     private func addObstacle() {
         let obstacle = SKSpriteNode(color: .red, size: CGSize(width: 30, height: 30))
         let yGrounds: CGFloat = -218
         let yCeiling: CGFloat = 218
-        let isGroundObstacle = Bool.random()
         let randomValue = Bool.random() ? yGrounds : yCeiling
         let xOffset = CGFloat(Int.random(in: 100...800))
 
@@ -151,7 +138,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         obstacles.append(obstacle)
         lastObstacleXPosition = obstacle.position.x
 
-        
     }
     
     private func removeObstacles() {
@@ -167,16 +153,48 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    func didBegin(_ contact: SKPhysicsContact) {
-            
-        let bodyA = contact.bodyA
-            let bodyB = contact.bodyB
-                if (bodyA.node == cube && bodyB.node?.name == "obstacle") || (bodyA.node?.name == "obstacle" && bodyB.node == cube) {
-                    if let window = view?.window {
-                        let viewController = UIStoryboard(name: "Main", bundle: nil).instantiateInitialViewController()
-                        window.rootViewController = viewController
-                    }
-                }
+    private func displaySettings() {
+        // set fps to 60 or 120 fps depends on device
+        if UIScreen.main.maximumFramesPerSecond == 60 {
+            self.view?.preferredFramesPerSecond = 60
+        } else if UIScreen.main.maximumFramesPerSecond == 120 {
+            self.view?.preferredFramesPerSecond = 120
         }
+        
+        // background color
+        backgroundColor = .cyan
+    }
     
+    private func physicsSettings() {
+        // set up physics world
+        physicsWorld.gravity = CGVector(dx: 0, dy: -9.8)
+        physicsWorld.contactDelegate = self
+    }
+    
+    func didBegin(_ contact: SKPhysicsContact) {
+        // collision with obstacles restarts the game
+        let bodyA = contact.bodyA.node
+        let bodyB = contact.bodyB.node
+        if (bodyA == cube && bodyB?.name == "obstacle") || (bodyA?.name == "obstacle" && bodyB == cube) {
+            let restartScene = GameScene(size: self.size)
+            restartScene.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            self.view?.presentScene(restartScene, transition: .crossFade(withDuration: 0.6))
+        }
+    }
+
+}
+
+struct ContentView: View {
+    var scene: SKScene {
+        let scene = GameScene()
+        scene.size = UIScreen.main.bounds.size
+        scene.scaleMode = .aspectFill
+        scene.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        return scene
+    }
+
+    var body: some View {
+        SpriteView(scene: scene, debugOptions: [.showsFPS, .showsNodeCount, .showsPhysics])
+                .edgesIgnoringSafeArea(.all)
+    }
 }
